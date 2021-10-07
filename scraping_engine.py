@@ -1,6 +1,7 @@
 import requests
 import bs4
 import json
+import sys
 
 
 class NFLSS:
@@ -93,8 +94,18 @@ class NFLSS:
         self.build_season_url(year)
         self.make_soup()
 
-    def run_multiple_years(self, start_year, end_year):
+    def run_multiple_years(self, start_year=2010, end_year=2020):
         ''' Runs from start_year to end_year and outputs to json file'''
+        try:  # check args
+            start_year = int(start_year)
+            end_year = int(end_year)
+        except ValueError:
+            raise TypeError(f'Invalid arguments: {start_year} or {end_year} are not numbers.')
+
+        if ((start_year < 1970) or (end_year > 2020)):
+            raise ValueError(f'Please input years between 1970 and 2020.')
+
+        # if args are correct
         print(f'Running from {start_year} to {end_year}')
         for year in range(start_year, end_year + 1):
             print(year)
@@ -116,4 +127,11 @@ def dump_to_json(data, filename='dump'):
 
 if __name__ == '__main__':
     nfl = NFLSS()
-    nfl.run_multiple_years(1970, 2020)
+    if len(sys.argv) > 1:
+        try:
+            nfl.run_multiple_years(sys.argv[1], sys.argv[2])
+        except Exception as e:
+            print(e)
+    else:
+        print('No arguments provided, using default values.')
+        nfl.run_multiple_years()
