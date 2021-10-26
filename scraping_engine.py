@@ -5,13 +5,38 @@ import sys
 from collections import defaultdict
 import csv
 import pickle
+import pandas as pd
+
 
 class NFLSS:
-    def __init__(self):
+
+    def __init__(self, start_year=2010, end_year=2020):
         self.base_url = r'https://www.pro-football-reference.com'
         self.season_url = self.base_url + r'/years/{}/'
-
         self.current_url = ''  # placeholder
+
+        # check year args
+        try:
+            start_year = int(start_year)
+            end_year = int(end_year)
+        except ValueError:
+            raise TypeError(f'Invalid arguments: {start_year} or {end_year} are not numbers.')
+
+        if not start_year or not end_year:
+            print('No arguments provided, using default values.')
+        elif ((start_year < 1970) or (end_year > 2020)):
+            raise ValueError(f'Please input years between 1970 and 2020.')
+
+        self.start_year = start_year
+        self.end_year = end_year
+
+        # export stuff
+        self.export_filename = filename = f'{self.start_year}-{self.end_year}'
+        self.export_methods = {
+            'json': self.dump_to_json,
+            'csv': self.dump_to_csv,
+            'pickle': self.dump_to_pickle
+        }
 
     def build_season_url(self, year):
         self.current_url = self.season_url.format(year)
@@ -98,23 +123,12 @@ class NFLSS:
         self.build_season_url(year)
         self.make_soup()
 
-    def run_multiple_years(self, start_year=2010, end_year=2020):
+    def run_multiple_years(self):
         ''' Runs from start_year to end_year and outputs to json file'''
-        self.start_year = start_year
-        self.end_year = end_year
-        try:  # check args
-            start_year = int(start_year)
-            end_year = int(end_year)
-        except ValueError:
-            raise TypeError(f'Invalid arguments: {start_year} or {end_year} are not numbers.')
-
-        if ((start_year < 1970) or (end_year > 2020)):
-            raise ValueError(f'Please input years between 1970 and 2020.')
-
         # if args are correct
-        print(f'Running from {start_year} to {end_year}')
+        print(f'Running from {self.start_year} to {self.end_year}')
         all_data = {}
-        for year in range(end_year, start_year - 1, -1):
+        for year in range(self.end_year, self.start_year - 1, -1):
             print(year)
             self.setup(year)
             year_data = defaultdict(dict)
@@ -141,53 +155,39 @@ class NFLSS:
                         year_data[team][stat_name] = stat_value
 
             all_data[self.current_year] = year_data
-            # dump_to_json(year_data, str(year))
             self.data = all_data
-        # dump_to_json(all_data, f'{start_year}-{end_year}')
-        self.dump_to_csv()
 
     def dump_to_csv(self):
-        exportable_data = []
-        for year in self.data.keys():
-            for team in self.data[year].keys():
-                row = [year, team]
-                for stat in self.data[year][team].values():
-                    row.append(stat)
-                exportable_data.append(row)
-
-        header = ['year', 'team']
-        for year in self.data.keys():
-            for team in self.data[year].keys():
-                for stat in self.data[year][team].keys():
-                    header.append(stat)
-                break
-            break
-
-        exportable_data.insert(0, header)
-
-        filename = f'{self.start_year}-{self.end_year}'
-        with open(filename + '.csv', 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerows(exportable_data)
+        reoriented_data = {
+            (i, j): self.data[i][j]
+                    for i in self.data.keys()
+                    for j in self.data[i].keys()
+        }
+        df = pd.DataFrame.from_dict(reoriented_data, orient='index')
+        df.to_csv(self.export_filename + '.csv', sep=';', encoding='utf-8')
 
     def dump_to_pickle(self):
-        filename = f'{self.start_year}-{self.end_year}'
-        with open(filename + '.pickle', "wb") as output_file:
-            pickle.dump(d, output_file)
+        with open(self.export_filename + '.pickle', "wb") as output_file:
+            pickle.dump(self.data, output_file)
 
     def dump_to_json(self):
-        filename = f'{self.start_year}-{self.end_year}'
-        with open(filename + '.json', 'w') as j:
+        with open(self.export_filename + '.json', 'w') as j:
             json.dump(self.data, j)
 
+    def export(self, method):
+        if method not in self.export_methods:
+            print('Using default export method (csv)')
+            self.export_methods['csv']()
+        else:
+            self.export_methods[method]()
+        
+        print('Done exporting to', method)
 
 if __name__ == '__main__':
-    nfl = NFLSS()
     if len(sys.argv) > 1:
         try:
-            nfl.run_multiple_years(sys.argv[1], sys.argv[2])
+            nfl = NFLSS(sys.argv[1], sys.argv[2])
+            nfl.run_multiple_years()
+            nfl.export(sys.argv[3])
         except Exception as e:
             print(e)
-    else:
-        print('No arguments provided, using default values.')
-        nfl.run_multiple_years()
