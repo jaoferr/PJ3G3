@@ -1,3 +1,6 @@
 venv/
 w_venv/
 data/
+j_venv/
+merge_script/.ipynb_checkpoints/
+.vscode/

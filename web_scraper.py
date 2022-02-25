@@ -9,6 +9,7 @@ import bs4
 import pandas as pd
 import os
 import multiprocessing
+import pickle
 from collections import defaultdict
 
 
@@ -37,7 +38,8 @@ class AsyncNFLSS:
     def __init__(
         self, start_year:int, end_year:int,
         export_data: bool, export_stat: bool,
-        export_schedule: bool, max_workers: int=None
+        export_schedule: bool, export_pickle: bool,
+        max_workers: int=None
     ):
         self.base_url = r'https://www.pro-football-reference.com'
         self.season_url = self.base_url + r'/years/{}/'
@@ -62,7 +64,8 @@ class AsyncNFLSS:
         self.export_data = export_data
         self.export_stat = export_stat
         self.export_schedule = export_schedule
-        
+        self.export_pickle = export_pickle
+
         if os.name == 'nt':  # windows
             self.encoding = 'ANSI'
         else:
@@ -170,7 +173,7 @@ class AsyncNFLSS:
         print(f'\tProcessing {year} season')
         soup = bs4.BeautifulSoup(html, 'html.parser')
         links_html = ''
-        season_data = {}
+        season_data = defaultdict(defaultdict)
         for table_id in self.tables_to_extract:
             table_html = soup.find('div', {'class': 'table_wrapper',
                                            'id': table_id})
@@ -182,7 +185,8 @@ class AsyncNFLSS:
             if table_id in ['all_AFC', 'all_NFC']:
                 links_html += str(table_html)
 
-            season_data = {**season_data, **table_data}
+            for team_name, team_stats in table_data.items():
+                season_data[team_name] = season_data[team_name] | team_stats
         links = self.get_team_page_links(links_html, year)
 
         print(f'Done processing {year} season')
@@ -287,6 +291,11 @@ class AsyncNFLSS:
         df.to_csv(filename, sep=';', encoding='utf-8')
         print('Exported season data to', filename)
 
+    def dump_to_pickle(self):
+        local_filename = self.export_filename + '.pickle'
+        with open(local_filename, 'wb') as file:
+            pickle.dump((self.team_schedules, self.season_data), file)
+
     def export(self):
         if not os.path.exists(os.path.join('.', 'data')):
             os.makedirs(os.path.join('.', 'data'))
@@ -297,6 +306,9 @@ class AsyncNFLSS:
         if self.export_schedule:
             self.dump_team_schedules()
         
+        if self.export_pickle:
+            self.dump_to_pickle()
+
         # if self.export_stat:
             # self.dump_stat_descriptions()
 
@@ -315,6 +327,7 @@ if __name__ == '__main__':
     parser.add_argument('-o', action='store_true', help='Export data')
     parser.add_argument('-stat', action='store_true', help='Export stat descriptions')
     parser.add_argument('-ts', action='store_true', help='Export team schedules')
+    parser.add_argument('-pickle', action='store_true', help='Export data as .pickle')
     parser.add_argument('-w', type=int, help='How many workers to use (default = cpu_count)')
     args = vars(parser.parse_args())
     
@@ -325,6 +338,7 @@ if __name__ == '__main__':
             export_data=args['o'],
             export_stat=args['stat'],
             export_schedule=args['ts'],
+            export_pickle=args['pickle'],
             max_workers=args['w']
         )
         nfl.run()
