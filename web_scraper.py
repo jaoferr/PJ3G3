@@ -10,7 +10,6 @@ import pandas as pd
 import os
 import multiprocessing
 from collections import defaultdict
-# from contextlib import closing
 
 
 class CustomTimer:
@@ -287,17 +286,6 @@ class AsyncNFLSS:
         df = pd.DataFrame.from_dict(reoriented_data, orient='index')
         df.to_csv(filename, sep=';', encoding='utf-8')
         print('Exported season data to', filename)
-
-        # i dont like using pandas here but it is the easiest way to do it
-        # below is a possible alternative
-        # but since it doesnt handle columns and missing data properly, i'll stick to pandas
-        # for year in self.season_data.keys():
-        #     for team in self.season_data[year].keys():
-        #         stats = []
-        #         for stat, value in self.season_data[year][team].items():
-        #             stats.append(value)
-                
-        #         print(year, team, ' '.join(stats))
 
     def export(self):
         if not os.path.exists(os.path.join('.', 'data')):
