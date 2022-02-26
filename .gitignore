@@ -4,3 +4,5 @@ data/
 j_venv/
 merge_script/.ipynb_checkpoints/
 .vscode/
+merge_script/debug.ipynb
+merge_script/merge_games_team_stats.ipynb

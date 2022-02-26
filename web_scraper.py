@@ -11,6 +11,7 @@ import os
 import multiprocessing
 import pickle
 from collections import defaultdict
+from tqdm import tqdm
 
 
 class CustomTimer:
@@ -222,8 +223,10 @@ class AsyncNFLSS:
                 stat = col['data-stat']  # stat name
                 stat_value = col.text
                 row_stats[stat] = stat_value
-            
+
+            row_stats['week_num'] = row.find('th', {'data-stat': 'week_num'}).text
             team_schedule[irow] = row_stats
+            
         print(f'Done processing {team_name} {year} team page.')
         return {year: {team_name: team_schedule}}
 
