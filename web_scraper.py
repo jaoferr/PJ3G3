@@ -9,7 +9,9 @@ import bs4
 import pandas as pd
 import os
 import multiprocessing
+import pickle
 from collections import defaultdict
+from tqdm import tqdm
 
 
 class CustomTimer:
@@ -34,7 +36,12 @@ class CustomTimer:
 
 class AsyncNFLSS:
 
-    def __init__(self, start_year, end_year, export_data, export_stat, export_schedule):
+    def __init__(
+        self, start_year:int, end_year:int,
+        export_data: bool, export_stat: bool,
+        export_schedule: bool, export_pickle: bool,
+        max_workers: int=None
+    ):
         self.base_url = r'https://www.pro-football-reference.com'
         self.season_url = self.base_url + r'/years/{}/'
         # check year args
@@ -53,11 +60,20 @@ class AsyncNFLSS:
         self.end_year = end_year
 
         # export stuff
-        self.export_filename = f'data\{self.start_year}-{self.end_year}'
+        self.export_filename = os.path.join('data', f'{self.start_year}-{self.end_year}')
         # export switches
         self.export_data = export_data
         self.export_stat = export_stat
         self.export_schedule = export_schedule
+        self.export_pickle = export_pickle
+
+        if os.name == 'nt':  # windows
+            self.encoding = 'ANSI'
+        else:
+            # self.encoding = 'utf-8'
+            self.encoding = 'latin-1'
+
+        self.max_workers = max_workers or multiprocessing.cpu_count()
 
     def setup(self):
         self.season_data = defaultdict(dict)
@@ -80,7 +96,7 @@ class AsyncNFLSS:
         url = self.season_url.format(year)
         r = await session.request(method='GET', url=url)
         r.raise_for_status()  # not sure what this does
-        html = await r.text(encoding='ANSI')
+        html = await r.text(encoding=self.encoding)
         self.season_html[year] = html
         # return html
 
@@ -100,7 +116,7 @@ class AsyncNFLSS:
         print(f'\tFetching {url}')
         r = await session.request(method='GET', url=url)
         r.raise_for_status()
-        html = await r.text(encoding='ANSI')
+        html = await r.text(encoding=self.encoding)
         self.team_html[year][team_name] = html
         print(f'\tDone fetching {url}')
 
@@ -158,7 +174,7 @@ class AsyncNFLSS:
         print(f'\tProcessing {year} season')
         soup = bs4.BeautifulSoup(html, 'html.parser')
         links_html = ''
-        season_data = {}
+        season_data = defaultdict(defaultdict)
         for table_id in self.tables_to_extract:
             table_html = soup.find('div', {'class': 'table_wrapper',
                                            'id': table_id})
@@ -170,7 +186,8 @@ class AsyncNFLSS:
             if table_id in ['all_AFC', 'all_NFC']:
                 links_html += str(table_html)
 
-            season_data = {**season_data, **table_data}
+            for team_name, team_stats in table_data.items():
+                season_data[team_name] = season_data[team_name] | team_stats
         links = self.get_team_page_links(links_html, year)
 
         print(f'Done processing {year} season')
@@ -183,7 +200,7 @@ class AsyncNFLSS:
         for year, html in self.season_html.items():
             tasks.append((year, html))
 
-        with multiprocessing.Pool() as pool:
+        with multiprocessing.Pool(self.max_workers) as pool:
             results = pool.map(self.process_season_soup, tasks)
 
         for res in results:
@@ -206,8 +223,11 @@ class AsyncNFLSS:
                 stat = col['data-stat']  # stat name
                 stat_value = col.text
                 row_stats[stat] = stat_value
-            
+
+            row_stats['week_num'] = row.find('th', {'data-stat': 'week_num'}).text
             team_schedule[irow] = row_stats
+            
+        print(f'Done processing {team_name} {year} team page.')
         return {year: {team_name: team_schedule}}
 
     def process_all_team_pages(self):
@@ -219,7 +239,7 @@ class AsyncNFLSS:
             for team_name, team_html in self.team_html[year].items():
                 tasks.append((team_html, team_name, year))
 
-        with multiprocessing.Pool() as pool:
+        with multiprocessing.Pool(self.max_workers) as pool:
             results = pool.map(self.process_team_page, tasks)
 
         for res in results:
@@ -241,7 +261,8 @@ class AsyncNFLSS:
 
     def run(self):
         self.setup()
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        if os.name == 'nt':
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         self.run_fetch_all_seasons()
         self.process_all_seasons()
         self.run_fetch_all_team_pages()
@@ -273,20 +294,14 @@ class AsyncNFLSS:
         df.to_csv(filename, sep=';', encoding='utf-8')
         print('Exported season data to', filename)
 
-        # i dont like using pandas here but it is the easiest way to do it
-        # below is a possible alternative
-        # but since it doesnt handle columns and missing data properly, i'll stick to pandas
-        # for year in self.season_data.keys():
-        #     for team in self.season_data[year].keys():
-        #         stats = []
-        #         for stat, value in self.season_data[year][team].items():
-        #             stats.append(value)
-                
-        #         print(year, team, ' '.join(stats))
+    def dump_to_pickle(self):
+        local_filename = self.export_filename + '.pickle'
+        with open(local_filename, 'wb') as file:
+            pickle.dump((self.team_schedules, self.season_data), file)
 
     def export(self):
-        if not os.path.exists('.\data'):
-            os.makedirs('.\data')
+        if not os.path.exists(os.path.join('.', 'data')):
+            os.makedirs(os.path.join('.', 'data'))
 
         if self.export_data:
             self.dump_to_csv()
@@ -294,8 +309,11 @@ class AsyncNFLSS:
         if self.export_schedule:
             self.dump_team_schedules()
         
-        if self.export_stat:
-            self.dump_stat_descriptions()
+        if self.export_pickle:
+            self.dump_to_pickle()
+
+        # if self.export_stat:
+            # self.dump_stat_descriptions()
 
 
 if __name__ == '__main__':
@@ -312,16 +330,19 @@ if __name__ == '__main__':
     parser.add_argument('-o', action='store_true', help='Export data')
     parser.add_argument('-stat', action='store_true', help='Export stat descriptions')
     parser.add_argument('-ts', action='store_true', help='Export team schedules')
-
+    parser.add_argument('-pickle', action='store_true', help='Export data as .pickle')
+    parser.add_argument('-w', type=int, help='How many workers to use (default = cpu_count)')
     args = vars(parser.parse_args())
-
+    
     try:
         nfl = AsyncNFLSS(
             start_year=args['start_year'],
             end_year=args['end_year'],
             export_data=args['o'],
             export_stat=args['stat'],
-            export_schedule=args['ts']
+            export_schedule=args['ts'],
+            export_pickle=args['pickle'],
+            max_workers=args['w']
         )
         nfl.run()
         nfl.export()
