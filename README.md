@@ -11,6 +11,8 @@ Machine Learning applied to Sports - Web scraping/Web Crawler/Search Engine
        - exporta dados da temporada
      - ``` -ts ```
        - exporta dados dos jogos dos times
+     - ``` -stat ```
+       - exporta nomes e descrições das colunas
      - ``` -pickle ```
        - exporta os dados em formato .pickle
      - ``` -w=[n] ```
@@ -19,6 +21,6 @@ Machine Learning applied to Sports - Web scraping/Web Crawler/Search Engine
        - Mais <i>workers</i> significa menos tempo de execução, porém mais consumo de memória e processamento.
        - Para máquinas com 8GB de RAM, utilize no máximo <b>6</b>.
 
- - Pasta destino padrão: ./data/
+ - Pasta destino padrão: ```./data/```
  
 Informações recolhidas do site https://www.pro-football-reference.com/.

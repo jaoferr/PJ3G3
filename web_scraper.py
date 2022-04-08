@@ -10,8 +10,9 @@ import pandas as pd
 import os
 import multiprocessing
 import pickle
+import re
+import csv
 from collections import defaultdict
-from tqdm import tqdm
 
 
 class CustomTimer:
@@ -79,7 +80,7 @@ class AsyncNFLSS:
         self.season_data = defaultdict(dict)
         self.season_html = {}
         
-        self.stat_descriptions = {}
+        self.stat_descriptions = []
         
         self.team_schedules = defaultdict(dict)
         self.team_html = {}
@@ -152,7 +153,7 @@ class AsyncNFLSS:
 
         return html
         
-    def extract_data_from_table(self, table_html):
+    def extract_data_from_table(self, table_html: bs4.element.Tag):           
         tbody = table_html.find('tbody')
         season_data = {}
         for row in tbody.find_all('tr', {'class': ''}):
@@ -169,12 +170,30 @@ class AsyncNFLSS:
             season_data[team_name] = current_team
         return season_data
 
+    def extract_stat_descriptions(
+        self, table_html: bs4.element.Tag, 
+        html_tag: str = 'th', html_class: dict = None
+        ) -> list[tuple[str]]:
+        # stat_headers = table_html.find_all('th', {'class': 'poptip'})
+        stat_headers = table_html.find_all(html_tag, html_class)
+        descriptions = []
+        re_pattern = re.compile('(<.+?>)')
+        for header in stat_headers:
+            stat_name = re_pattern.sub('', header.attrs.get('data-stat') or 'NULL')
+            label = re_pattern.sub('', header.attrs.get('aria-label') or 'NULL')
+            tip = re_pattern.sub('', header.attrs.get('data-tip') or 'NULL')
+
+            descriptions.append((stat_name, label, tip))
+
+        return descriptions
+
     def process_season_soup(self, args):
         year, html = args
         print(f'\tProcessing {year} season')
         soup = bs4.BeautifulSoup(html, 'html.parser')
         links_html = ''
         season_data = defaultdict(defaultdict)
+        stat_descriptions = []
         for table_id in self.tables_to_extract:
             table_html = soup.find('div', {'class': 'table_wrapper',
                                            'id': table_id})
@@ -183,6 +202,7 @@ class AsyncNFLSS:
             table_html = self.uncomment_table(table_html)
 
             table_data = self.extract_data_from_table(table_html)
+            stat_descriptions += self.extract_stat_descriptions(table_html, 'th', {'class': 'poptip'})
             if table_id in ['all_AFC', 'all_NFC']:
                 links_html += str(table_html)
 
@@ -191,7 +211,8 @@ class AsyncNFLSS:
         links = self.get_team_page_links(links_html, year)
 
         print(f'Done processing {year} season')
-        return {year: {'season_data': season_data, 'team_links': links}}
+        season_dict = {year: {'season_data': season_data, 'team_links': links}}
+        return season_dict, stat_descriptions
 
     def process_all_seasons(self):
         print('Processing season pages')
@@ -203,10 +224,16 @@ class AsyncNFLSS:
         with multiprocessing.Pool(self.max_workers) as pool:
             results = pool.map(self.process_season_soup, tasks)
 
-        for res in results:
-            for year in res.keys():
-                self.season_data[year] = res[year]['season_data']
-                self.team_links[year] = res[year]['team_links']
+        for season in results:
+            season_data = season[0]
+            for year in season_data.keys():
+                self.season_data[year] = season_data[year]['season_data']
+                self.team_links[year] = season_data[year]['team_links']
+
+            stat_descriptions = season[1]
+            self.stat_descriptions += stat_descriptions
+        
+        self.stat_descriptions = list(set(self.stat_descriptions))
         print(f'Done processing season pages in {timer.end_timer_no_print()}s')
 
     def process_team_page(self, args):
@@ -215,20 +242,22 @@ class AsyncNFLSS:
         table = soup.find('table', {'id': 'games'})
         tbody = table.find('tbody')
         team_schedule = {}
+        stat_descriptions = self.extract_stat_descriptions(tbody, 'td')
         # games in season
         for irow, row in enumerate(tbody.find_all('tr', {'class': ''})):
             row_stats = {}
             # game stats
             for col in row.find_all('td'):  # each column in current row
-                stat = col['data-stat']  # stat name
+                stat_name = col['data-stat']  # stat name
                 stat_value = col.text
-                row_stats[stat] = stat_value
+                row_stats[stat_name] = stat_value
 
             row_stats['week_num'] = row.find('th', {'data-stat': 'week_num'}).text
             team_schedule[irow] = row_stats
             
         print(f'Done processing {team_name} {year} team page.')
-        return {year: {team_name: team_schedule}}
+        season_dict = {year: {team_name: team_schedule}}
+        return season_dict, stat_descriptions
 
     def process_all_team_pages(self):
         timer = CustomTimer()
@@ -242,10 +271,21 @@ class AsyncNFLSS:
         with multiprocessing.Pool(self.max_workers) as pool:
             results = pool.map(self.process_team_page, tasks)
 
-        for res in results:
-            for year in res.keys():
-                for team in res[year].keys():
-                    self.team_schedules[year][team] = res[year][team]
+        # for res in results:
+        #     for year in res.keys():
+        #         for team in res[year].keys():
+        #             self.team_schedules[year][team] = res[year][team]
+        for season in results:
+            season_data = season[0]
+            for year in season_data.keys():
+                for team in season_data[year]:
+                    self.team_schedules[year][team] = season_data[year][team]
+
+            stat_descriptions = season[1]
+            self.stat_descriptions += stat_descriptions
+        
+        self.stat_descriptions = list(set(self.stat_descriptions))
+
 
         print(f'Done processing team pages in {timer.end_timer_no_print()}s')
 
@@ -282,6 +322,17 @@ class AsyncNFLSS:
         df = pd.DataFrame.from_dict(reoriented_data, orient='index')
         df.to_csv(local_filename, sep=';', encoding='utf-8')
 
+    def dump_stat_descriptions(self):
+        local_filename = self.export_filename + '_stat_descriptions.csv'
+           
+        with open(local_filename, 'w') as file:
+            writer = csv.writer(file)
+            writer.writerow(('stat_name', 'label', 'tip'))  # header
+            writer.writerows(self.stat_descriptions)
+
+        
+        print('Exported stat descriptions to', local_filename)
+
     def dump_to_csv(self):
         ''' Dumps season data do CSV file '''
         filename = self.export_filename + '.csv'
@@ -312,8 +363,8 @@ class AsyncNFLSS:
         if self.export_pickle:
             self.dump_to_pickle()
 
-        # if self.export_stat:
-            # self.dump_stat_descriptions()
+        if self.export_stat:
+            self.dump_stat_descriptions()
 
 
 if __name__ == '__main__':
