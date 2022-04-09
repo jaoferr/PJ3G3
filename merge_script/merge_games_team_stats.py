@@ -11,7 +11,6 @@
 
 import pandas as pd
 import os
-from pathlib import Path
 from tqdm import tqdm
 
 
@@ -42,12 +41,16 @@ df_schedules = df_schedules_raw.copy()
 # In[11]:
 
 
+# unnamed_cols = {
+#     'Unnamed: 0': 'year',
+#     'Unnamed: 1': 'team',
+#     'Unnamed: 2': 'week_number'
+# }
+# df_stats.drop('Unnamed: 1', axis=1, inplace=True)
+
 unnamed_cols = {
-    'Unnamed: 0': 'year',
-    'Unnamed: 1': 'team',
-    'Unnamed: 2': 'week_number'
+    'Unnamed: 0': 'id',
 }
-df_stats.drop('Unnamed: 1', axis=1, inplace=True)
 df_stats.rename(columns=unnamed_cols, inplace=True)
 df_schedules.rename(columns=unnamed_cols, inplace=True)
 
@@ -172,9 +175,29 @@ df_playoffs = df_games[df_games['gs_is_playoff'] == True]
 
 # #### export to csv
 
+df_games = df_games.reset_index().drop('index', axis=1)
+df_playoffs = df_playoffs.reset_index().drop('index', axis=1)
+df_regular_season = df_regular_season.reset_index().drop('index', axis=1)
+
 # In[54]:
+print('')
+print(f'{"Exporting raw data":<30}', end='')
+df_games.to_csv(os.path.join(base_path, 'all_games.csv'), sep=';', encoding='utf-8', index=True)
+df_playoffs.to_csv(os.path.join(base_path, 'playoffs.csv'), sep=';', encoding='utf-8', index=True)
+df_regular_season.to_csv(os.path.join(base_path, 'regular_season.csv'), sep=';', encoding='utf-8', index=True)
 
+print('Done')
+# In[]:
 
-df_games.to_csv(os.path.join(base_path, 'all_games.csv'), sep=';', encoding='utf-8', index=False)
-df_playoffs.to_csv(os.path.join(base_path, 'playoffs.csv'), sep=';', encoding='utf-8', index=False)
-df_regular_season.to_csv(os.path.join(base_path, 'regular_season.csv'), sep=';', encoding='utf-8', index=False)
+# #### kaggle files
+print(f'{"Exporting kaggle data":<30}', end='')
+df_playoffs = df_playoffs[df_playoffs['gs_game_location'].isin(['N', 'home'])]
+
+df_kaggle_train = df_playoffs[~df_playoffs['gs_year'].isin([2018, 2019, 2020, 2021])]
+df_kaggle_test_public = df_playoffs[df_playoffs['gs_year'].isin([2018, 2019])]
+df_kaggle_test_private = df_playoffs[df_playoffs['gs_year'].isin([2020, 2021])]
+
+df_kaggle_train.to_csv(os.path.join(base_path, 'df_kaggle_train.csv'), sep=';', encoding='utf-8', index=True)
+df_kaggle_test_public.to_csv(os.path.join(base_path, 'df_kaggle_test_public.csv'), sep=';', encoding='utf-8', index=True)
+df_kaggle_test_private.to_csv(os.path.join(base_path, 'df_kaggle_test_private.csv'), sep=';', encoding='utf-8', index=True)
+print('Done')

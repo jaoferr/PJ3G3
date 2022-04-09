@@ -54,8 +54,8 @@ class AsyncNFLSS:
 
         if not start_year or not end_year:
             print('No arguments provided, using default values.')
-        elif ((start_year < 1970) or (end_year > 2020)):
-            raise ValueError(f'Please input years between 1970 and 2020.')
+        elif ((start_year < 1970) or (end_year > 2021)):
+            raise ValueError(f'Please input years between 1970 and 2021.')
 
         self.start_year = start_year
         self.end_year = end_year
@@ -319,8 +319,13 @@ class AsyncNFLSS:
                     for j in self.team_schedules[i].keys()
                     for k in self.team_schedules[i][j].keys()
         }
-        df = pd.DataFrame.from_dict(reoriented_data, orient='index')
-        df.to_csv(local_filename, sep=';', encoding='utf-8')
+        df = pd.DataFrame.from_dict(reoriented_data, orient='index').reset_index() \
+            .rename(
+                {'level_0': 'year',
+                 'level_1': 'team',
+                 'level_2': 'week_number'}, axis=1
+            )
+        df.to_csv(local_filename, sep=';', encoding='utf-8', index=True)
 
     def dump_stat_descriptions(self):
         local_filename = self.export_filename + '_stat_descriptions.csv'
@@ -341,8 +346,12 @@ class AsyncNFLSS:
                     for i in self.season_data.keys()
                     for j in self.season_data[i].keys()
         }
-        df = pd.DataFrame.from_dict(reoriented_data, orient='index')
-        df.to_csv(filename, sep=';', encoding='utf-8')
+        df = pd.DataFrame.from_dict(reoriented_data, orient='index').reset_index() \
+            .rename(
+                {'level_0': 'year',
+                 'level_1': 'team'}, axis=1
+            )
+        df.to_csv(filename, sep=';', encoding='utf-8', index=True)
         print('Exported season data to', filename)
 
     def dump_to_pickle(self):
