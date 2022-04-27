@@ -22,17 +22,26 @@ base_path = full_path
 # base_path = str(Path(full_path).parents[0])  # one dir up
 base_path = os.path.join(base_path, 'data')
 
-team_stats_file = os.path.join(base_path, '1970-2020.csv')
-team_schedules_file = os.path.join(base_path, '1970-2020_team_schedule.csv')
+try:
+    team_stats_file = os.path.join(base_path, '1970-2020.csv')
+    team_schedules_file = os.path.join(base_path, '1970-2020_team_schedule.csv')
+    df_stats_raw = pd.read_csv(team_stats_file, sep=';')
+    df_schedules_raw = pd.read_csv(team_schedules_file, sep=';')
 
+except FileNotFoundError:
+    team_stats_file = os.path.join(base_path, '1970-2021.csv')
+    team_schedules_file = os.path.join(base_path, '1970-2021_team_schedule.csv')
+    df_stats_raw = pd.read_csv(team_stats_file, sep=';')
+    df_schedules_raw = pd.read_csv(team_schedules_file, sep=';')
+
+except:
+    raise FileNotFoundError(f"no data files found in {base_path}")
+    
 
 # ---
 
 # In[9]:
 
-
-df_stats_raw = pd.read_csv(team_stats_file, sep=';')
-df_schedules_raw = pd.read_csv(team_schedules_file, sep=';')
 
 df_stats = df_stats_raw.copy()
 df_schedules = df_schedules_raw.copy()
