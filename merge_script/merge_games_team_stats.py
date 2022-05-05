@@ -200,13 +200,43 @@ print('Done')
 
 # #### kaggle files
 print(f'{"Exporting kaggle data":<30}', end='')
+cols_to_drop = [
+    'gs_overtime', 'gs_pts_off', 'gs_pts_def',
+    'gs_first_down_off', 'gs_yards_off', 'gs_pass_yds_off',
+    'gs_rush_yds_off', 'gs_to_off', 'gs_first_down_def',
+    'gs_yards_def', 'gs_pass_yds_def', 'gs_rush_yds_def',
+    'gs_to_def', 'gs_exp_pts_off', 'gs_exp_pts_def', 'gs_exp_pts_st',
+    'gs_is_playoff', 'gs_team_record',
+    'hts_year', 'hts_team', 'hts_team.1',
+    'ats_year', 'ats_team', 'ats_team.1'
+]
+df_playoffs.drop(cols_to_drop, axis=1, inplace=True)
 df_playoffs = df_playoffs[df_playoffs['gs_game_location'].isin(['N', 'home'])]
 
-df_kaggle_train = df_playoffs[~df_playoffs['gs_year'].isin([2018, 2019, 2020, 2021])]
-df_kaggle_test_public = df_playoffs[df_playoffs['gs_year'].isin([2018, 2019])]
-df_kaggle_test_private = df_playoffs[df_playoffs['gs_year'].isin([2020, 2021])]
+# renaming cols
+cols_to_rename = {
+    'gs_game_outcome': 'winorlose'
+}
+df_playoffs.rename(cols_to_rename, axis=1, inplace=True)
 
-df_kaggle_train.to_csv(os.path.join(base_path, 'df_kaggle_train.csv'), sep=';', encoding='utf-8', index=True)
-df_kaggle_test_public.to_csv(os.path.join(base_path, 'df_kaggle_test_public.csv'), sep=';', encoding='utf-8', index=True)
-df_kaggle_test_private.to_csv(os.path.join(base_path, 'df_kaggle_test_private.csv'), sep=';', encoding='utf-8', index=True)
+# reordering
+new_col_order = ['gs_id', 'gs_year', 'gs_team', 'gs_opp']
+new_col_order += df_playoffs.drop(new_col_order + ['winorlose'], axis=1).columns.tolist() + ['winorlose']
+df_playoffs = df_playoffs[new_col_order]
+
+# In[]:
+# exporting kaggle datasets
+df_kaggle_train = df_playoffs[~df_playoffs['gs_year'].isin([2018, 2019, 2020, 2021])]  # years not in
+df_kaggle_test = df_playoffs[df_playoffs['gs_year'].isin([2018, 2019, 2020, 2021])]  # years in
+df_kaggle_test_labels = df_kaggle_test[['gs_id', 'winorlose']]
+
+df_kaggle_test.drop('winorlose', axis=1, inplace=True)  # target col
+
+sample_submission = [(i, 'W') for i in range(10)] + [(i, 'L') for i in range(10, 20)]
+df_sample_submission = pd.DataFrame(sample_submission, columns=['gs_id', 'winorlose'])
+
+df_kaggle_train.to_csv(os.path.join(base_path, 'df_kaggle_train.csv'), sep=';', encoding='utf-8', index=False)
+df_kaggle_test.to_csv(os.path.join(base_path, 'df_kaggle_test.csv'), sep=';', encoding='utf-8', index=False)
+df_kaggle_test_labels.to_csv(os.path.join(base_path, 'df_kaggle_test_labels.csv'), sep=';', encoding='utf-8', index=False)
+df_sample_submission.to_csv(os.path.join(base_path, 'df_kaggle_sample_submission.csv'), sep=';', encoding='utf-8', index=False)
 print('Done')
